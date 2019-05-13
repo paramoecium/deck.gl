@@ -170,6 +170,11 @@ export default class Attribute extends BaseAttribute {
 
       this.constant = false;
       this.value = new ArrayType(this.size * allocCount);
+
+      if (this.buffer && this.buffer.byteLength < this.value.byteLength) {
+        this.buffer.reallocate(this.value.byteLength);
+      }
+
       state.needsUpdate = true;
       state.allocedInstances = allocCount;
       return true;
@@ -185,16 +190,24 @@ export default class Attribute extends BaseAttribute {
 
     const state = this.userData;
 
-    const {update, accessor} = state;
+    const {update, accessor, noAlloc} = state;
 
     let updated = true;
     if (update) {
       // Custom updater - typically for non-instanced layers
       update.call(context, this, {data, props, numInstances});
-      this.update({
-        value: this.value,
-        constant: this.constant
-      });
+      if (noAlloc || this.constant || !this.buffer) {
+        // Full update
+        this.update({
+          value: this.value,
+          constant: this.constant
+        });
+      } else {
+        // Only update the changed part of the attribute
+        this.buffer.subData({
+          data: this.value.subarray(0, numInstances * this.size)
+        });
+      }
       this._checkAttributeArray();
     } else if (accessor) {
       // Standard updater
